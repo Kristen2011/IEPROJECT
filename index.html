@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Medicine Identifier</title>
+    <!-- You can add CSS here or link to a stylesheet -->
+</head>
+
+<body>
+    <h1 style="text-align:center;">Medicine Database</h1>
+    <header>
+        <h1>Medicine Identifier</h1>
+    </header>
+    <main>
+        <!-- Search Bar -->
+        <section>
+            <h2>🔍 Search Medicines</h2>
+            <input type="text" id="searchInput" placeholder="Enter medicine name">
+            <button id="searchBtn">Search</button>
+            <div id="searchResults">
+                <!-- Search results will appear here -->
+            </div>
+        </section>
+
+        <!-- Photo Upload/Camera -->
+        <section>
+            <h2>📸 Take or Upload a Photo</h2>
+            <input type="file" accept="image/*" capture="environment" id="photoInput">
+            <button id="detectBtn">Detect Medicine</button>
+        </section>
+
+        <!-- Detected Medicine Display -->
+        <section>
+            <h2>🧠 Detected Medicine</h2>
+            <div id="medicineInfo">
+                <!-- Medicine name will appear here -->
+            </div>
+            <textarea id="medicineDescription" rows="4" cols="60" placeholder="Scientific description will appear here"
+                readonly></textarea>
+        </section>
+
+        <!-- Translation -->
+        <section>
+            <h2>🌍 Translate</h2>
+            <textarea id="translateInput" rows="8" cols="60" placeholder="Enter text to translate"></textarea><br>
+            <select id="languageSelect">
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="zh">Chinese</option>
+                <option value="fr">French</option>
+                <!-- Add more languages as needed -->
+            </select>
+            <button id="translateBtn">Translate</button>
+            <br>
+            <textarea id="translatedOutput" rows="8" cols="60" placeholder="Translation will appear here"
+                readonly></textarea>
+            <div id="translatedInfo">
+                <!-- Translated name and description will appear here -->
+            </div>
+        </section>
+    </main>
+    <script>
+        document.getElementById('searchBtn').addEventListener('click', function () {
+            const query = document.getElementById('searchInput').value.trim().toLowerCase();
+            const resultsDiv = document.getElementById('searchResults');
+            resultsDiv.innerHTML = 'Searching...';
+            if (!query) {
+                resultsDiv.innerHTML = 'Please enter a medicine name.';
+                return;
+            }
+
+            if (query === "ibuprofen") {
+                const brands = [
+                    "Advil", "Advil Migraine", "Children's Ibuprofen", "Motrin IB", "Children's Advil",
+                    "Infant's Motrin", "Caldolor", "NeoProfen", "Ibuprofen IB", "Infant's Advil"
+                ];
+                const pharmacy = "CVS Pharmacy, Walgreens, Rite Aid";
+                resultsDiv.innerHTML = `
+<b>Common Name:</b> Ibuprofen<br>
+<b>Brief Description:</b> Nonsteroidal anti-inflammatory drug (NSAID) that treats fever and mild to severe pain.<br>
+<b>Common Brands:</b> ${brands.join(', ')}<br>
+<b>Pharmacy:</b> ${pharmacy}<br>
+<b>Restrictions:</b> Prescription sometimes needed. Consult a doctor if pregnant. Alcohol interactions can occur.<br>
+<b>How to Use:</b> Take with food or milk to prevent stomach upset. Swallow tablets whole with water.<br>
+<b>Dosage:</b> Adults and children over 12: 200-400 mg every 4-6 hours as needed. Do not exceed 1200 mg in 24 hours unless directed by a doctor.<br>
+Always follow your healthcare provider's instructions and read the medication guide.
+                `;
+                return;
+            }
+            if (query === "acetaminophen" || query === "paracetamol" || query === "tylenol") {
+                const brands = [
+                    "Tylenol", "FeverAll", "Mapap", "Ofirmev", "Panadol"
+                ];
+                const pharmacy = "CVS Pharmacy, Walgreens, Rite Aid";
+                resultsDiv.innerHTML = `
+<b>Common Name:</b> Acetaminophen (Paracetamol)<br>
+<b>Brief Description:</b> Pain reliever and a fever reducer.<br>
+<b>Common Brands:</b> ${brands.join(', ')}<br>
+<b>Pharmacy:</b> ${pharmacy}<br>
+<b>Restrictions:</b> Overdose can cause liver damage. Consult a doctor if you have liver disease. Alcohol increases risk of liver damage.<br>
+<b>How to Use:</b> Can be taken with or without food. Swallow tablets whole with water.<br>
+<b>Dosage:</b> Adults: 325-650 mg every 4-6 hours as needed. Do not exceed 3000 mg in 24 hours.<br>
+Always follow your healthcare provider's instructions and read the medication guide.
+                `;
+                return;
+            }
+            if (query === "amoxicillin") {
+                const brands = [
+                    "Amoxil", "Moxatag", "Trimox"
+                ];
+                const pharmacy = "CVS Pharmacy, Walgreens, Rite Aid";
+                resultsDiv.innerHTML = `
+<b>Common Name:</b> Amoxicillin<br>
+<b>Brief Description:</b> Antibiotic used to treat a variety of bacterial infections.<br>
+<b>Common Brands:</b> ${brands.join(', ')}<br>
+<b>Pharmacy:</b> ${pharmacy}<br>
+<b>Restrictions:</b> Not suitable for those allergic to penicillin. Consult a doctor if pregnant or breastfeeding.<br>
+<b>How to Use:</b> Take with or without food. Swallow capsules or tablets whole with water.<br>
+<b>Dosage:</b> Adults: 250-500 mg every 8 hours or 500-875 mg every 12 hours, depending on the infection. Children: Dose based on weight.<br>
+Always follow your healthcare provider's instructions and read the medication guide.
+                `;
+                return;
+            }
+
+            fetch(`https://api.fda.gov/drug/label.json?search=openfda.brand_name:"${encodeURIComponent(query)}"&limit=1`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.results && data.results.length > 0) {
+                        const drug = data.results[0];
+                        const name = drug.openfda.brand_name ? drug.openfda.brand_name[0] : (drug.openfda.generic_name ? drug.openfda.generic_name[0] : 'Unknown');
+                        const brands = drug.openfda.brand_name ? drug.openfda.brand_name.join(', ') : 'Unknown';
+                        const description = drug.indications_and_usage ? drug.indications_and_usage.join('<br>') : 'No description available.';
+                        const usage = drug.dosage_and_administration ? drug.dosage_and_administration.join('<br>') : 'No usage information available.';
+                        const restrictions = drug.warnings ? drug.warnings.join('<br>') : 'No restrictions/warnings available.';
+                        const pharmacy = "CVS Pharmacy, Walgreens, Rite Aid";
+                        resultsDiv.innerHTML = `
+<b>Common Name:</b> ${name}<br>
+<b>Brief Description:</b> ${description}<br>
+<b>Common Brands:</b> ${brands}<br>
+<b>Pharmacy:</b> ${pharmacy}<br>
+<b>Restrictions:</b> ${restrictions}<br>
+<b>How to Use:</b> ${usage}<br>
+Always follow your healthcare provider's instructions and read the medication guide.
+                        `;
+                    } else {
+                        resultsDiv.innerHTML = 'No results found.';
+                    }
+                })
+                .catch(() => {
+                    resultsDiv.innerHTML = 'Error fetching data.';
+                });
+        });
+
+        // Detect medicine from photo and fetch description from OpenFDA API (mock name detection, real description)
+        document.getElementById('detectBtn').addEventListener('click', function () {
+            const photoInput = document.getElementById('photoInput');
+            const medicineInfoDiv = document.getElementById('medicineInfo');
+            const descBox = document.getElementById('medicineDescription');
+            if (!photoInput.files || photoInput.files.length === 0) {
+                medicineInfoDiv.innerHTML = 'Please upload a photo of the medicine.';
+                descBox.value = '';
+                return;
+            }
+            medicineInfoDiv.innerHTML = 'Detecting medicine...';
+            descBox.value = '';
+            setTimeout(() => {
+                // Replace this prompt with real detection logic that sets detectedName
+                // For demonstration, use a prompt to simulate detection
+                let detectedName = prompt("Enter detected medicine name (e.g., ibuprofen, acetaminophen, amoxicillin):");
+                if (!detectedName) {
+                    descBox.value = "NOT FOUND";
+                    medicineInfoDiv.innerHTML = "";
+                    return;
+                }
+                detectedName = detectedName.trim().toLowerCase();
+
+                // Use the same database logic as the search bar
+                let resultText = "";
+                if (detectedName === "ibuprofen") {
+                    const brands = [
+                        "Advil", "Advil Migraine", "Children's Ibuprofen", "Motrin IB", "Children's Advil",
+                        "Infant's Motrin", "Caldolor", "NeoProfen", "Ibuprofen IB", "Infant's Advil"
+                    ];
+                    const pharmacy = "CVS Pharmacy, Walgreens, Rite Aid";
+                    const description = "Nonsteroidal anti-inflammatory drug (NSAID) that treats fever and mild to severe pain.";
+                    const restrictions = "Prescription sometimes needed. Consult a doctor if pregnant. Alcohol interactions can occur.";
+                    const usage = "Take with food or milk to prevent stomach upset. Swallow tablets whole with water.";
+                    const dosage = "Adults and children over 12: 200-400 mg every 4-6 hours as needed. Do not exceed 1200 mg in 24 hours unless directed by a doctor.";
+                    resultText =
+                        `Common Name: Ibuprofen
+
+Brief Description: ${description}
+
+Common Brands: ${brands.join(', ')}
+
+Pharmacy: ${pharmacy}
+
+Restrictions: ${restrictions}
+
+How to Use: ${usage}
+
+Dosage: ${dosage}
+
+Always follow your healthcare provider's instructions and read the medication guide.`;
+                } else if (detectedName === "acetaminophen" || detectedName === "paracetamol" || detectedName === "tylenol") {
+                    const brands = [
+                        "Tylenol", "FeverAll", "Mapap", "Ofirmev", "Panadol"
+                    ];
+                    const pharmacy = "CVS Pharmacy, Walgreens, Rite Aid";
+                    const description = "Pain reliever and a fever reducer.";
+                    const restrictions = "Overdose can cause liver damage. Consult a doctor if you have liver disease. Alcohol increases risk of liver damage.";
+                    const usage = "Can be taken with or without food. Swallow tablets whole with water.";
+                    const dosage = "Adults: 325-650 mg every 4-6 hours as needed. Do not exceed 3000 mg in 24 hours.";
+                    resultText =
+                        `Common Name: Acetaminophen (Paracetamol)
+
+Brief Description: ${description}
+
+Common Brands: ${brands.join(', ')}
+
+Pharmacy: ${pharmacy}
+
+Restrictions: ${restrictions}
+
+How to Use: ${usage}
+
+Dosage: ${dosage}
+
+Always follow your healthcare provider's instructions and read the medication guide.`;
+                } else if (detectedName === "amoxicillin") {
+                    const brands = [
+                        "Amoxil", "Moxatag", "Trimox"
+                    ];
+                    const pharmacy = "CVS Pharmacy, Walgreens, Rite Aid";
+                    const description = "Antibiotic used to treat a variety of bacterial infections.";
+                    const restrictions = "Not suitable for those allergic to penicillin. Consult a doctor if pregnant or breastfeeding.";
+                    const usage = "Take with or without food. Swallow capsules or tablets whole with water.";
+                    const dosage = "Adults: 250-500 mg every 8 hours or 500-875 mg every 12 hours, depending on the infection. Children: Dose based on weight.";
+                    resultText =
+                        `Common Name: Amoxicillin
+
+Brief Description: ${description}
+
+Common Brands: ${brands.join(', ')}
+
+Pharmacy: ${pharmacy}
+
+Restrictions: ${restrictions}
+
+How to Use: ${usage}
+
+Dosage: ${dosage}
+
+Always follow your healthcare provider's instructions and read the medication guide.`;
+                } else {
+                    // Fallback to OpenFDA API for other drugs
+                    fetch(`https://api.fda.gov/drug/label.json?search=openfda.brand_name:"${encodeURIComponent(detectedName)}"&limit=1`)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.results && data.results.length > 0) {
+                                const drug = data.results[0];
+                                const name = drug.openfda.brand_name ? drug.openfda.brand_name[0] : (drug.openfda.generic_name ? drug.openfda.generic_name[0] : 'Unknown');
+                                const brands = drug.openfda.brand_name ? drug.openfda.brand_name.join(', ') : 'Unknown';
+                                const description = drug.indications_and_usage ? drug.indications_and_usage.join('\n') : 'No description available.';
+                                const usage = drug.dosage_and_administration ? drug.dosage_and_administration.join('\n') : 'No usage information available.';
+                                const restrictions = drug.warnings ? drug.warnings.join('\n') : 'No restrictions/warnings available.';
+                                const pharmacy = "CVS Pharmacy, Walgreens, Rite Aid";
+                                resultText =
+                                    `Common Name: ${name}
+
+Brief Description: ${description}
+
+Common Brands: ${brands}
+
+Pharmacy: ${pharmacy}
+
+Restrictions: ${restrictions}
+
+How to Use: ${usage}
+
+Always follow your healthcare provider's instructions and read the medication guide.`;
+                                descBox.value = resultText;
+                                descBox.style.height = "auto";
+                                descBox.style.height = (descBox.scrollHeight + 2) + "px";
+                            } else {
+                                descBox.value = "NOT FOUND";
+                            }
+                        })
+                        .catch(() => {
+                            descBox.value = "NOT FOUND";
+                        });
+                    return;
+                }
+                // For the hardcoded templates, fill in the resultText as before
+                if (resultText) {
+                    medicineInfoDiv.innerHTML = "";
+                    descBox.value = resultText;
+                    descBox.style.height = "auto";
+                    descBox.style.height = (descBox.scrollHeight + 2) + "px";
+                }
+            }, 1500);
+        });
+        async function translateText(inputText) {
+            const response = await fetch("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer YOUR_API_KEY"
+                },
+                body: JSON.stringify({
+                    model: "gpt-4o-mini",
+                    messages: [{ role: "user", content: "Translate this: " + inputText }]
+                })
+            });
+            const data = await response.json();
+            console.log(data.choices[0].message.content);
+        }
+
+        // Translate text using MyMemory API (from English to selected language)
+        document.getElementById('translateBtn').addEventListener('click', function () {
+            const text = document.getElementById('translateInput').value.trim();
+            const targetLang = document.getElementById('languageSelect').value;
+            const output = document.getElementById('translatedOutput');
+            output.value = 'Translating...';
+            if (!text) {
+                output.value = 'Please enter text to translate.';
+                return;
+            }
+            // MyMemory API expects language codes like 'en|es'
+            const langPair = `en|${targetLang}`;
+            fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${langPair}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.responseData && data.responseData.translatedText) {
+                        output.value = data.responseData.translatedText;
+                    } else {
+                        output.value = 'Translation failed.';
+                    }
+                })
+                .catch(() => {
+                    output.value = 'Error translating text.';
+                });
+        });
+
+        // Add/replace this word counter and limit logic for translateInput (e.g., 2000 words)
+        document.getElementById('translateInput').addEventListener('input', function () {
+            let words = this.value.trim().split(/\s+/).filter(Boolean);
+            if (words.length > 2000) {
+                words = words.slice(0, 2000);
+                this.value = words.join(' ');
+            }
+
+        });
+    </script>
+</body>
+
+</html>
