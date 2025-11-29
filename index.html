@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
+import { Analytics } from "@vercel/analytics/next"
 
 <head>
     <meta charset="UTF-8">
     <title>Medicine Identifier</title>
     <!-- You can add CSS here or link to a stylesheet -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.5/dist/tesseract.min.js"></script>
 </head>
 
 <body>
@@ -44,6 +46,10 @@
         <section>
             <h2>🌍 Translate</h2>
             <textarea id="translateInput" rows="8" cols="60" placeholder="Enter text to translate"></textarea><br>
+            <!-- NEW: live word / char counters -->
+            <div id="translateLimits" style="font-size:12px;color:#666;margin-top:6px;">
+                Words: <span id="wordCount">0</span>/1000 &nbsp; | &nbsp; Characters: <span id="charCount">0</span>
+            </div>
             <select id="languageSelect">
                 <option value="en">English</option>
                 <option value="es">Spanish</option>
@@ -51,6 +57,35 @@
                 <option value="fr">French</option>
                 <!-- Add more languages as needed -->
             </select>
+
+            <!-- Updated: Choose translation method (MyMemory / OpenAI / Copilot) -->
+            <div id="translateMethodOptions" style="margin-top:8px;">
+                <label><input type="radio" name="translateMethod" value="mymemory" checked> MyMemory (free)</label>
+                <label style="margin-left:12px;"><input type="radio" name="translateMethod" value="openai"> OpenAI
+                    (requires API key)</label>
+                <label style="margin-left:12px;"><input type="radio" name="translateMethod" value="copilot"> GitHub
+                    Copilot (requires API access)</label>
+            </div>
+
+            <!-- OpenAI API key + model -->
+            <div id="openai-key-container" style="display:none; margin-top:8px;">
+                <input id="openaiApiKey" type="password" placeholder="Enter OpenAI API Key (sk-...)">
+                <input id="openaiModel" placeholder="Model (optional)" value="gpt-4o-mini" style="margin-left:8px;">
+                <div style="font-size:12px;color:#666;margin-top:4px;">OpenAI API key will not be stored. Keep it
+                    secret.</div>
+            </div>
+
+            <!-- NEW: Copilot API URL + token -->
+            <div id="copilot-key-container" style="display:none; margin-top:8px;">
+                <input id="copilotApiUrl" placeholder="Copilot API URL (e.g., https://copilot.example/api)"
+                    style="width:48%;">
+                <input id="copilotApiKey" type="password" placeholder="Copilot API Token"
+                    style="width:48%; margin-left:4%;">
+                <div style="font-size:12px;color:#666;margin-top:4px;">
+                    GitHub Copilot/ Copilot Chat API access required. Enter your endpoint and token.
+                </div>
+            </div>
+
             <button id="translateBtn">Translate</button>
             <br>
             <textarea id="translatedOutput" rows="8" cols="60" placeholder="Translation will appear here"
@@ -61,6 +96,212 @@
         </section>
     </main>
     <script>
+        // NEW: Local medicines database for quick matching
+        const MEDICINES = {
+            ibuprofen: {
+                commonName: "Ibuprofen",
+                description: "Nonsteroidal anti-inflammatory drug (NSAID) that treats fever and mild to severe pain.",
+                brands: ["Advil", "Advil Migraine", "Children's Ibuprofen", "Motrin IB", "Children's Advil", "Infant's Motrin", "Caldolor", "NeoProfen", "Ibuprofen IB", "Infant's Advil"],
+                pharmacy: "CVS Pharmacy, Walgreens, Rite Aid",
+                restrictions: "Prescription sometimes needed. Consult a doctor if pregnant. Alcohol interactions can occur.",
+                usage: "Take with food or milk to prevent stomach upset. Swallow tablets whole with water."
+            },
+            acetaminophen: {
+                commonName: "Acetaminophen (Paracetamol)",
+                description: "Pain reliever and a fever reducer.",
+                brands: ["Tylenol", "FeverAll", "Mapap", "Ofirmev", "Panadol"],
+                pharmacy: "CVS Pharmacy, Walgreens, Rite Aid",
+                restrictions: "Overdose can cause liver damage. Consult a doctor if you have liver disease. Alcohol increases risk of liver damage.",
+                usage: "Can be taken with or without food. Swallow tablets whole with water."
+            },
+            amoxicillin: {
+                commonName: "Amoxicillin",
+                description: "Antibiotic used to treat a variety of bacterial infections.",
+                brands: ["Amoxil", "Moxatag", "Trimox"],
+                pharmacy: "CVS Pharmacy, Walgreens, Rite Aid",
+                restrictions: "Not suitable for those allergic to penicillin. Consult a doctor if pregnant or breastfeeding.",
+                usage: "Take with or without food. Swallow capsules or tablets whole with water."
+            }
+        };
+
+        // Helper: Format result text
+        function formatMedicineResult(details) {
+            return `Common Name: ${details.commonName}
+
+Brief Description: ${details.description}
+
+Common Brands: ${details.brands.join(', ')}
+
+Pharmacy: ${details.pharmacy}
+
+Restrictions: ${details.restrictions}
+
+How to Use: ${details.usage}
+
+Always follow your healthcare provider's instructions and read the medication guide.`;
+        }
+
+        // Helper: Try to match OCR text to known medicines (brand names or generic)
+        function extractMedicineNameFromText(text) {
+            if (!text) return null;
+            const normalized = text.toLowerCase();
+            // Check each known medicine for either generic name or any brand occurrence.
+            for (const key in MEDICINES) {
+                const details = MEDICINES[key];
+                // check generic
+                if (normalized.includes(key.toLowerCase())) return key;
+                // check each brand name
+                if (details.brands.some(b => normalized.includes(b.toLowerCase()))) return key;
+            }
+            return null;
+        }
+
+        // Helper: Query OpenFDA searching for likely medicine names from tokens
+        async function findMedicineFromFDA(text) {
+            const tokens = (text || '').toLowerCase().match(/\b[a-z]{3,}\b/g) || [];
+            const uniqueTokens = Array.from(new Set(tokens)).slice(0, 12); // limit token count
+            for (const token of uniqueTokens) {
+                // Try brand_name first
+                try {
+                    const res = await fetch(`https://api.fda.gov/drug/label.json?search=openfda.brand_name:"${encodeURIComponent(token)}"&limit=1`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.results && data.results.length > 0) {
+                            const drug = data.results[0];
+                            const name = drug.openfda.brand_name ? drug.openfda.brand_name[0] : (drug.openfda.generic_name ? drug.openfda.generic_name[0] : 'Unknown');
+                            const brands = drug.openfda.brand_name ? drug.openfda.brand_name.join(', ') : 'Unknown';
+                            const description = drug.indications_and_usage ? drug.indications_and_usage.join('\n') : 'No description available.';
+                            const usage = drug.dosage_and_administration ? drug.dosage_and_administration.join('\n') : 'No usage information available.';
+                            const restrictions = drug.warnings ? drug.warnings.join('\n') : 'No restrictions/warnings available.';
+                            const pharmacy = "CVS Pharmacy, Walgreens, Rite Aid";
+                            return {
+                                commonName: name,
+                                brands: brands.split ? brands.split(', ') : [brands],
+                                description,
+                                usage,
+                                restrictions,
+                                pharmacy
+                            };
+                        }
+                    }
+                } catch (e) {
+                    // ignore transient errors and try the next token
+                }
+                // Try generic_name
+                try {
+                    const res2 = await fetch(`https://api.fda.gov/drug/label.json?search=openfda.generic_name:"${encodeURIComponent(token)}"&limit=1`);
+                    if (res2.ok) {
+                        const data2 = await res2.json();
+                        if (data2.results && data2.results.length > 0) {
+                            const drug = data2.results[0];
+                            const name = drug.openfda.generic_name ? drug.openfda.generic_name[0] : (drug.openfda.brand_name ? drug.openfda.brand_name[0] : 'Unknown');
+                            const brands = drug.openfda.brand_name ? drug.openfda.brand_name.join(', ') : 'Unknown';
+                            const description = drug.indications_and_usage ? drug.indications_and_usage.join('\n') : 'No description available.';
+                            const usage = drug.dosage_and_administration ? drug.dosage_and_administration.join('\n') : 'No usage information available.';
+                            const restrictions = drug.warnings ? drug.warnings.join('\n') : 'No restrictions/warnings available.';
+                            const pharmacy = "CVS Pharmacy, Walgreens, Rite Aid";
+                            return {
+                                commonName: name,
+                                brands: brands.split ? brands.split(', ') : [brands],
+                                description,
+                                usage,
+                                restrictions,
+                                pharmacy
+                            };
+                        }
+                    }
+                } catch (e) {
+                    // ignore errors
+                }
+            }
+            return null;
+        }
+
+        // Replace the detect logic to use OCR instead of prompting
+        async function detectMedicineFromPhoto() {
+            const photoInput = document.getElementById('photoInput');
+            const medicineInfoDiv = document.getElementById('medicineInfo');
+            const descBox = document.getElementById('medicineDescription');
+
+            if (!photoInput.files || photoInput.files.length === 0) {
+                medicineInfoDiv.innerHTML = 'Please upload a photo of the medicine.';
+                descBox.value = '';
+                return;
+            }
+            const file = photoInput.files[0];
+            medicineInfoDiv.innerHTML = 'Detecting medicine (running OCR)...';
+            descBox.value = '';
+
+            // Convert file to data URL for Tesseract
+            const dataURL = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+
+            try {
+                // Perform OCR with progress logging
+                const logger = m => {
+                    if (m.status === 'recognizing text') {
+                        medicineInfoDiv.innerHTML = `Detecting medicine (OCR ${Math.round(m.progress * 100)}%)...`;
+                    }
+                };
+
+                const result = await Tesseract.recognize(dataURL, 'eng', { logger });
+                const ocrText = result?.data?.text || '';
+                // Attempt local matching first
+                const matchedKey = extractMedicineNameFromText(ocrText);
+                if (matchedKey) {
+                    const details = MEDICINES[matchedKey];
+                    descBox.value = formatMedicineResult(details);
+                    medicineInfoDiv.innerHTML = `<b>Detected:</b> ${details.commonName}`;
+                    descBox.style.height = 'auto';
+                    descBox.style.height = (descBox.scrollHeight + 2) + 'px';
+                    return;
+                }
+
+                // If not found locally, fallback to querying OpenFDA using tokens from OCR.
+                medicineInfoDiv.innerHTML = 'Searching FDA for matching medicine...';
+                const fdaMatch = await findMedicineFromFDA(ocrText);
+                if (fdaMatch) {
+                    // Format the result similarly
+                    const resultObj = {
+                        commonName: fdaMatch.commonName,
+                        description: fdaMatch.description,
+                        brands: fdaMatch.brands,
+                        pharmacy: fdaMatch.pharmacy,
+                        restrictions: fdaMatch.restrictions,
+                        usage: fdaMatch.usage
+                    };
+                    descBox.value = formatMedicineResult(resultObj);
+                    medicineInfoDiv.innerHTML = `<b>Detected (FDA):</b> ${resultObj.commonName}`;
+                    descBox.style.height = 'auto';
+                    descBox.style.height = (descBox.scrollHeight + 2) + 'px';
+                    return;
+                }
+
+                // No match
+                medicineInfoDiv.innerHTML = 'No medicine name detected from image.';
+                descBox.value = 'NOT FOUND';
+            } catch (err) {
+                console.error('OCR error', err);
+                medicineInfoDiv.innerHTML = 'Error detecting medicine.';
+                descBox.value = 'NOT FOUND';
+            }
+        }
+
+        // Replace the previous detectBtn click handler
+        document.getElementById('detectBtn').addEventListener('click', function () {
+            detectMedicineFromPhoto();
+        });
+
+        // Automatically detect when a new file is chosen
+        document.getElementById('photoInput').addEventListener('change', function () {
+            // small delay to ensure file is available
+            setTimeout(() => detectMedicineFromPhoto(), 200);
+        });
+
         document.getElementById('searchBtn').addEventListener('click', function () {
             const query = document.getElementById('searchInput').value.trim().toLowerCase();
             const resultsDiv = document.getElementById('searchResults');
@@ -82,8 +323,7 @@
 <b>Common Brands:</b> ${brands.join(', ')}<br>
 <b>Pharmacy:</b> ${pharmacy}<br>
 <b>Restrictions:</b> Prescription sometimes needed. Consult a doctor if pregnant. Alcohol interactions can occur.<br>
-<b>How to Use:</b> Take with food or milk to prevent stomach upset. Swallow tablets whole with water.<br>
-<b>Dosage:</b> Adults and children over 12: 200-400 mg every 4-6 hours as needed. Do not exceed 1200 mg in 24 hours unless directed by a doctor.<br>
+<b>How to Use:</b> Take with food or
 Always follow your healthcare provider's instructions and read the medication guide.
                 `;
                 return;
@@ -317,41 +557,142 @@ Always follow your healthcare provider's instructions and read the medication gu
             console.log(data.choices[0].message.content);
         }
 
-        // Translate text using MyMemory API (from English to selected language)
-        document.getElementById('translateBtn').addEventListener('click', function () {
-            const text = document.getElementById('translateInput').value.trim();
+        // Toggle OpenAI / Copilot API inputs
+        document.querySelectorAll('input[name="translateMethod"]').forEach(el => {
+            el.addEventListener('change', function () {
+                document.getElementById('openai-key-container').style.display = this.value === 'openai' ? 'block' : 'none';
+                document.getElementById('copilot-key-container').style.display = this.value === 'copilot' ? 'block' : 'none';
+            });
+        });
+
+        // OpenAI translation helper (already exists earlier in your code; keep or adjust)
+        async function translateTextOpenAI(inputText, targetLangCode, apiKey, model = "gpt-4o-mini") {
+            // ...existing OpenAI translate logic...
+        }
+
+        // NEW: Generic Copilot translation helper — requires a user-provided Copilot API endpoint and token.
+        // You'll need access to a Copilot Chat/Service endpoint to use this (Copilot APIs are not publicly available to all users).
+        async function translateTextCopilot(apiUrl, apiKey, inputText, targetLangCode) {
+            if (!apiUrl || !apiKey) throw new Error("Copilot API URL and key are required.");
+            // Build a simple payload — your Copilot endpoint may need a different shape; adapt as needed
+            const payload = {
+                // This is a generic "prompt", adapt to the Copilot endpoint specification if necessary
+                prompt: `Translate the following text to ${targetLangCode}:\n\n${inputText}`,
+                max_tokens: 2000,
+                temperature: 0.2
+            };
+
+            const res = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+                const body = await res.text().catch(() => '');
+                throw new Error(`Copilot API error: ${res.status} ${res.statusText} ${body}`);
+            }
+
+            const data = await res.json();
+
+            // Try multiple common response formats — adapt to your endpoint's schema:
+            const translated =
+                data?.result ||
+                data?.translation ||
+                data?.choices?.[0]?.message?.content ||
+                data?.choices?.[0]?.text ||
+                data?.output?.[0]?.content ||
+                data?.text ||
+                '';
+
+            return translated.trim();
+        }
+
+        // Unified translate click handler to validate MAX_WORDS and choose method
+        document.getElementById('translateBtn').addEventListener('click', async function () {
+            const text = translateInput.value.trim();
+            const words = text ? text.split(/\s+/).filter(Boolean) : [];
             const targetLang = document.getElementById('languageSelect').value;
             const output = document.getElementById('translatedOutput');
             output.value = 'Translating...';
+
             if (!text) {
                 output.value = 'Please enter text to translate.';
                 return;
             }
-            // MyMemory API expects language codes like 'en|es'
-            const langPair = `en|${targetLang}`;
-            fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${langPair}`)
-                .then(res => res.json())
-                .then(data => {
-                    if (data && data.responseData && data.responseData.translatedText) {
-                        output.value = data.responseData.translatedText;
-                    } else {
-                        output.value = 'Translation failed.';
-                    }
-                })
-                .catch(() => {
-                    output.value = 'Error translating text.';
-                });
-        });
 
-        // Add/replace this word counter and limit logic for translateInput (e.g., 2000 words)
-        document.getElementById('translateInput').addEventListener('input', function () {
-            let words = this.value.trim().split(/\s+/).filter(Boolean);
-            if (words.length > 2000) {
-                words = words.slice(0, 2000);
-                this.value = words.join(' ');
+            if (words.length > MAX_WORDS) {
+                output.value = `Please limit the input to ${MAX_WORDS} words or fewer.`;
+                return;
             }
 
+            const method = document.querySelector('input[name="translateMethod"]:checked').value;
+            try {
+                if (method === 'openai') {
+                    const apiKey = document.getElementById('openaiApiKey').value.trim();
+                    if (!apiKey) {
+                        output.value = 'Please enter an OpenAI API key or choose MyMemory.';
+                        return;
+                    }
+                    const model = document.getElementById('openaiModel')?.value?.trim() || "gpt-4o-mini";
+                    const translatedText = await translateTextOpenAI(text, targetLang, apiKey, model);
+                    output.value = translatedText || 'OpenAI returned no translation.';
+                    return;
+                }
+
+                if (method === 'copilot') {
+                    const apiUrl = document.getElementById('copilotApiUrl').value.trim();
+                    const apiKey = document.getElementById('copilotApiKey').value.trim();
+                    if (!apiUrl || !apiKey) {
+                        output.value = 'Please enter a Copilot API URL and token or choose MyMemory.';
+                        return;
+                    }
+                    const translatedText = await translateTextCopilot(apiUrl, apiKey, text, targetLang);
+                    output.value = translatedText || 'Copilot returned no translation.';
+                    return;
+                }
+
+                // Default: MyMemory API
+                const langPair = `en|${targetLang}`;
+                const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${langPair}`);
+                const data = await res.json();
+                if (data && data.responseData && data.responseData.translatedText) {
+                    output.value = data.responseData.translatedText;
+                } else {
+                    output.value = 'Translation failed.';
+                }
+            } catch (err) {
+                console.error(err);
+                output.value = 'Error translating text: ' + (err.message || '');
+            }
         });
+
+        // Enforce maximum words for translateInput (max 1000 words) and update counters
+        const MAX_WORDS = 1000;
+        const translateInput = document.getElementById('translateInput');
+        const wordCountEl = document.getElementById('wordCount');
+        const charCountEl = document.getElementById('charCount');
+
+        function updateTranslateCounters() {
+            const value = translateInput.value || '';
+            const words = value.trim().split(/\s+/).filter(Boolean);
+            let wordCount = words.length;
+            if (wordCount > MAX_WORDS) {
+                // truncate to MAX_WORDS
+                const truncated = words.slice(0, MAX_WORDS).join(' ');
+                translateInput.value = truncated;
+                wordCount = MAX_WORDS;
+            }
+            wordCountEl.textContent = wordCount;
+            charCountEl.textContent = translateInput.value.length;
+        }
+
+        translateInput.addEventListener('input', updateTranslateCounters);
+        // initialize counters on load in case there's prefilled content
+        updateTranslateCounters();
     </script>
 </body>
 
