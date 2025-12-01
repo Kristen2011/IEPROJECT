@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-import { Analytics } from "@vercel/analytics/next"
 
 <head>
     <meta charset="UTF-8">
@@ -57,34 +56,6 @@ import { Analytics } from "@vercel/analytics/next"
                 <option value="fr">French</option>
                 <!-- Add more languages as needed -->
             </select>
-
-            <!-- Updated: Choose translation method (MyMemory / OpenAI / Copilot) -->
-            <div id="translateMethodOptions" style="margin-top:8px;">
-                <label><input type="radio" name="translateMethod" value="mymemory" checked> MyMemory (free)</label>
-                <label style="margin-left:12px;"><input type="radio" name="translateMethod" value="openai"> OpenAI
-                    (requires API key)</label>
-                <label style="margin-left:12px;"><input type="radio" name="translateMethod" value="copilot"> GitHub
-                    Copilot (requires API access)</label>
-            </div>
-
-            <!-- OpenAI API key + model -->
-            <div id="openai-key-container" style="display:none; margin-top:8px;">
-                <input id="openaiApiKey" type="password" placeholder="Enter OpenAI API Key (sk-...)">
-                <input id="openaiModel" placeholder="Model (optional)" value="gpt-4o-mini" style="margin-left:8px;">
-                <div style="font-size:12px;color:#666;margin-top:4px;">OpenAI API key will not be stored. Keep it
-                    secret.</div>
-            </div>
-
-            <!-- NEW: Copilot API URL + token -->
-            <div id="copilot-key-container" style="display:none; margin-top:8px;">
-                <input id="copilotApiUrl" placeholder="Copilot API URL (e.g., https://copilot.example/api)"
-                    style="width:48%;">
-                <input id="copilotApiKey" type="password" placeholder="Copilot API Token"
-                    style="width:48%; margin-left:4%;">
-                <div style="font-size:12px;color:#666;margin-top:4px;">
-                    GitHub Copilot/ Copilot Chat API access required. Enter your endpoint and token.
-                </div>
-            </div>
 
             <button id="translateBtn">Translate</button>
             <br>
