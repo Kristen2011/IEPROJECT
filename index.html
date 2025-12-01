@@ -67,7 +67,7 @@
         </section>
     </main>
     <script>
-        //  Local medicines database for quick matching
+        // NEW: Local medicines database for quick matching
         const MEDICINES = {
             ibuprofen: {
                 commonName: "Ibuprofen",
@@ -95,7 +95,7 @@
             }
         };
 
-        //  Format result text
+        // Helper: Format result text
         function formatMedicineResult(details) {
             return `Common Name: ${details.commonName}
 
@@ -112,7 +112,7 @@ How to Use: ${details.usage}
 Always follow your healthcare provider's instructions and read the medication guide.`;
         }
 
-        //  Try to match OCR text to known medicines (brand names or generic)
+        // Helper: Try to match OCR text to known medicines (brand names or generic)
         function extractMedicineNameFromText(text) {
             if (!text) return null;
             const normalized = text.toLowerCase();
@@ -127,7 +127,7 @@ Always follow your healthcare provider's instructions and read the medication gu
             return null;
         }
 
-        // Query OpenFDA searching for likely medicine names from tokens
+        // Helper: Query OpenFDA searching for likely medicine names from tokens
         async function findMedicineFromFDA(text) {
             const tokens = (text || '').toLowerCase().match(/\b[a-z]{3,}\b/g) || [];
             const uniqueTokens = Array.from(new Set(tokens)).slice(0, 12); // limit token count
@@ -252,7 +252,7 @@ Always follow your healthcare provider's instructions and read the medication gu
                     return;
                 }
 
-                // No match for medicine
+                // No match
                 medicineInfoDiv.innerHTML = 'No medicine name detected from image.';
                 descBox.value = 'NOT FOUND';
             } catch (err) {
@@ -363,7 +363,7 @@ Always follow your healthcare provider's instructions and read the medication gu
                 });
         });
 
-        // Detect medicine from photo and fetch description from OpenFDA API 
+        // Detect medicine from photo and fetch description from OpenFDA API (mock name detection, real description)
         document.getElementById('detectBtn').addEventListener('click', function () {
             const photoInput = document.getElementById('photoInput');
             const medicineInfoDiv = document.getElementById('medicineInfo');
@@ -376,7 +376,8 @@ Always follow your healthcare provider's instructions and read the medication gu
             medicineInfoDiv.innerHTML = 'Detecting medicine...';
             descBox.value = '';
             setTimeout(() => {
-                // detecting medicine
+                // Replace this prompt with real detection logic that sets detectedName
+                // For demonstration, use a prompt to simulate detection
                 let detectedName = prompt("Enter detected medicine name (e.g., ibuprofen, acetaminophen, amoxicillin):");
                 if (!detectedName) {
                     descBox.value = "NOT FOUND";
@@ -385,7 +386,7 @@ Always follow your healthcare provider's instructions and read the medication gu
                 }
                 detectedName = detectedName.trim().toLowerCase();
 
-                // search bar
+                // Use the same database logic as the search bar
                 let resultText = "";
                 if (detectedName === "ibuprofen") {
                     const brands = [
@@ -527,7 +528,7 @@ Always follow your healthcare provider's instructions and read the medication gu
             console.log(data.choices[0].message.content);
         }
 
-        // Toggle OpenAI / Copilot API inputs (not sure if it works)
+        // Toggle OpenAI / Copilot API inputs
         document.querySelectorAll('input[name="translateMethod"]').forEach(el => {
             el.addEventListener('change', function () {
                 document.getElementById('openai-key-container').style.display = this.value === 'openai' ? 'block' : 'none';
@@ -535,10 +536,22 @@ Always follow your healthcare provider's instructions and read the medication gu
             });
         });
 
-        // OpenAI translation helper (already exists earlier in the code; keep or adjust)
+        // OpenAI translation helper (already exists earlier in your code; keep or adjust)
         async function translateTextOpenAI(inputText, targetLangCode, apiKey, model = "gpt-4o-mini") {
             // ...existing OpenAI translate logic...
         }
+
+        // NEW: Generic Copilot translation helper — requires a user-provided Copilot API endpoint and token.
+        // You'll need access to a Copilot Chat/Service endpoint to use this (Copilot APIs are not publicly available to all users).
+        async function translateTextCopilot(apiUrl, apiKey, inputText, targetLangCode) {
+            if (!apiUrl || !apiKey) throw new Error("Copilot API URL and key are required.");
+            // Build a simple payload — your Copilot endpoint may need a different shape; adapt as needed
+            const payload = {
+                // This is a generic "prompt", adapt to the Copilot endpoint specification if necessary
+                prompt: `Translate the following text to ${targetLangCode}:\n\n${inputText}`,
+                max_tokens: 2000,
+                temperature: 0.2
+            };
 
             const res = await fetch(apiUrl, {
                 method: 'POST',
@@ -628,7 +641,7 @@ Always follow your healthcare provider's instructions and read the medication gu
             }
         });
 
-        // Enforce maximum words for translateInput (max 1000 words) and update counters (didn't work)
+        // Enforce maximum words for translateInput (max 1000 words) and update counters
         const MAX_WORDS = 1000;
         const translateInput = document.getElementById('translateInput');
         const wordCountEl = document.getElementById('wordCount');
